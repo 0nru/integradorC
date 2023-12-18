@@ -1,0 +1,366 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <unistd.h>
+#include <conio.h>
+
+#define USUARIOS_MAXIMOS 10
+#define MAX_INTENTOS 3
+#define DEPOSITO '1'
+#define EXTRACCION '2'
+#define CONSULTAR_SALDO '3'
+#define TRANSFERENCIA '4'
+#define VER_ACTIVIDAD '5'
+#define CERRAR_SESION '6'
+#define FILE_NAME "datosUsuarios.txt"
+
+struct datos
+{
+    int numCuenta;
+    int clave;
+    char nombre[10];
+    double saldo;
+    bool estado;
+    char actividad[500];
+};
+
+void imprimirMenu() {
+    printf("---------------------------MENU---------------------------\n");
+    printf("1. Realizar dep%csito\n",162);
+    printf("2. Realizar extracci%cn\n",162);
+    printf("3. Consultar saldo\n");
+    printf("4. Realizar transferencia\n");
+    printf("5. Ver actividad\n");
+    printf("6. Cerrar sesi%cn\n",162);
+    printf("----------------------------------------------------------\n");
+}
+
+void imprimirMenuAdmin() {
+    printf("---------------------------MENU---------------------------\n");
+    printf("1. Desbloquear usuario\n");
+    printf("2. Finalizar ejecuci%dn\n",162);
+    printf("----------------------------------------------------------\n");
+}
+
+void limpiar() {
+    // system("clear");
+    printf("\033[2J\033[H");
+}
+
+int encontrarCuenta(struct datos usuarios[USUARIOS_MAXIMOS], int cuenta, int min, int max) {
+    if (min > max) return -1;
+
+    int indice = -1;
+    int centro = (min + max) / 2;
+
+    if (cuenta == usuarios[centro].numCuenta) {
+        indice = centro;
+    }else if (cuenta < usuarios[centro].numCuenta) {
+        indice = encontrarCuenta(usuarios, cuenta, min, centro - 1);
+    }else {
+        indice = encontrarCuenta(usuarios, cuenta, centro + 1, max);
+    }
+
+    return indice;
+}
+
+bool validarClave(struct datos usuarios[USUARIOS_MAXIMOS], int clave, int indiceUsuario) {
+    bool claveCorrecta = false;
+    if (clave == usuarios[indiceUsuario].clave){
+        claveCorrecta = true;
+    }
+    return claveCorrecta;
+}
+
+void bloquearCuenta(struct datos usuarios[USUARIOS_MAXIMOS], int indiceUsuario) {
+    usuarios[indiceUsuario].estado = false;
+}
+
+int iniciarSesion(struct datos usuarios[USUARIOS_MAXIMOS]) {
+    int numCuenta;
+    int clave;
+    int cuentaEncontrada;
+    int indiceUsuario;
+    int intentos = 0;
+    bool sesionInciada = false;
+
+    while (!sesionInciada && intentos < 3) {
+        printf("Ingrese su n%cmero de cuenta:\n",163);
+        scanf(" %d", &numCuenta);
+
+        if (numCuenta != 912) {
+            cuentaEncontrada = encontrarCuenta(usuarios,numCuenta, 0, USUARIOS_MAXIMOS-1);
+
+            if (cuentaEncontrada != -1) {
+                indiceUsuario = cuentaEncontrada;
+
+                if (usuarios[indiceUsuario].estado) {
+                    while (intentos < 3) {
+                        printf("Ingrese su clave:\n");
+                        scanf(" %d", &clave);
+
+                        if (validarClave(usuarios,clave,indiceUsuario)) {
+                            sesionInciada = true;
+                            break;
+                        }else {
+                            intentos++;
+                            printf("Clave incorrecta. Le quedan %d intento/s antes de que se cuenta sea bloqueada.\n", MAX_INTENTOS-intentos);
+                        }
+                    }
+
+                    if (intentos >= 3) {
+                        bloquearCuenta(usuarios, indiceUsuario);
+                        limpiar();
+                        printf("Su cuenta ha sido bloqueada por superar la cantidad de intentos permitidos. Por favor contactese al servicio de atenci%cn al cliente para obtener asistencia.\n",162);
+                        indiceUsuario = -1;
+                    }
+                }else {
+                    limpiar();
+                    printf("Su cuenta se encuentra bloqueda. Por favor contactese al servicio de atenci%cn al cliente para obtener asistencia.\n",162);
+                }
+            }else {
+                limpiar();
+                printf("No se encontr%c ning%cn usuario asociado al n%cmero de cuenta ingresado. Aseg%crate de que estar ingresandolo correctamente. \n",162,163,163,163);
+            }
+        }else {
+            indiceUsuario = 912;
+        }
+    }
+
+    return indiceUsuario;
+}
+
+void actualizarActividad(struct datos usuarios[USUARIOS_MAXIMOS], char operacion, int indiceUsuario, double monto) {
+    char str[500];
+    switch (operacion) {
+        case DEPOSITO:
+            snprintf(str, sizeof(str), "Dep%csito:$%.2lf,", 162, monto);
+            strcat(usuarios[indiceUsuario].actividad, str);
+            break;
+        case EXTRACCION:
+            snprintf(str, sizeof(str), "Extracci%cn:$%.2lf,", 162, monto);
+            strcat(usuarios[indiceUsuario].actividad, str);
+            break;
+    }
+}
+
+void actualizarTransferencia(struct datos usuarios[10], int indiceUsuario, double monto, int indiceDestinatario) {
+    char str1[500];
+    snprintf(str1, sizeof(str1), "Transferencia:$%.2lf-a:%s,", monto, usuarios[indiceDestinatario].nombre);
+    strcat(usuarios[indiceUsuario].actividad, str1);
+
+    char str2[500];
+    snprintf(str2, sizeof(str2), "Transferencia:$%.2lf-de%s", monto, usuarios[indiceUsuario].nombre);
+    strcat(usuarios[indiceDestinatario].actividad, str2);
+}
+
+void realizarTransferencia(struct datos usuarios[10], int indiceUsuario) {
+    double saldo = usuarios[indiceUsuario].saldo;
+    int cuentaDestinatario;
+    int indiceDestinatario;
+    double montoTransferido;
+    
+    printf("Ingrese el n%cmero de cuenta del destinatario:\n",163);
+    scanf(" %d", &cuentaDestinatario);
+    indiceDestinatario = encontrarCuenta(usuarios, cuentaDestinatario, 0, 9);
+
+    if (indiceDestinatario != -1) {
+        printf("Ingrese el monto a transferir:\n");
+        scanf("%lf",&montoTransferido);
+
+        if (montoTransferido <= 0) printf("Por favor ingrese un monto v%clido para realizar la transferencia",160);
+        else if(montoTransferido > saldo) printf("No posee saldo suficiente para realizar la transferencia");
+        else {
+            double restante = saldo - montoTransferido;
+            usuarios[indiceUsuario].saldo = restante;
+            double saldoDestinatario = usuarios[indiceDestinatario].saldo;
+            double nuevoSaldoDestinatario = saldoDestinatario + montoTransferido;
+             usuarios[indiceDestinatario].saldo = nuevoSaldoDestinatario;
+            actualizarTransferencia(usuarios, indiceUsuario, montoTransferido, indiceDestinatario);
+        }
+    }else printf("No se encontr%c un usuario asociado al n%cmero de cuenta ingresado",162,163);
+}
+
+void realizarExtraccion(struct datos usuarios[USUARIOS_MAXIMOS], int indiceUsuario) {
+    double saldo = usuarios[indiceUsuario].saldo;
+    double montoExtraccion;
+    double restante;
+
+    printf("Ingrese el monto a extraer:\n");
+    scanf("%lf",&montoExtraccion);
+
+    if (montoExtraccion <= 0 ) printf("Por favor ingrese un monto v%clido para realizar la extracci%cn\n",160,162);
+    else if (montoExtraccion > saldo) printf("No posee saldo suficiente para realizar la extracci%cn\n",162);
+    else {
+        restante = saldo - montoExtraccion;
+        usuarios[indiceUsuario].saldo = restante;
+        printf("Extracci%cn realizada con exito\n",162);
+        actualizarActividad(usuarios, EXTRACCION, indiceUsuario, montoExtraccion);
+    }
+}
+
+void realizarDeposito(struct datos usuarios[USUARIOS_MAXIMOS], int indiceUsuario) {
+    double monto;
+    double saldo;
+    double total;
+    printf("Ingrese el monto a depositar: ");
+    scanf("%lf",&monto);
+    if (monto <= 0) printf("Por favor ingrese un monto v%clido",160);
+    else {
+        saldo = usuarios[indiceUsuario].saldo;
+        total = saldo + monto;
+        usuarios[indiceUsuario].saldo = total;
+        actualizarActividad(usuarios, DEPOSITO, indiceUsuario, monto);
+        printf("El deposito se realizo con %cxito",130);
+    }
+}
+
+void consultarSaldo(struct datos usuarios[USUARIOS_MAXIMOS], int indiceUsuario) {
+    printf("\nSALDO DISPONIBLE: $ %.2lf\n",usuarios[indiceUsuario].saldo);
+}
+
+void verActividad(struct datos usuarios[USUARIOS_MAXIMOS], int indiceUsuario) {
+    char *texto = strdup(usuarios[indiceUsuario].actividad);
+    char *token = strtok(texto, ",");
+
+    while (token != NULL) {
+        printf("%s\n", token);
+        token = strtok(NULL, ",");
+    }
+}
+
+char realizarOtraOperacion() {
+    char opcion;
+    printf("\n%cDesea realizar otra operaci%cn?\n1. Si 2. No",168,162);
+    while (opcion != '1' && opcion != '2') {
+        opcion = getch();
+    }
+    return opcion;
+}
+
+void guardarDatos(struct datos datosUsuarios[USUARIOS_MAXIMOS]) {
+    FILE *pF = fopen("datosUsuarios.txt", "w");
+    for (int i = 0; i < USUARIOS_MAXIMOS; i++) {
+        fprintf(pF, "%d %d %s %.2lf %d %s\n",
+                datosUsuarios[i].numCuenta,
+                datosUsuarios[i].clave,
+                datosUsuarios[i].nombre,
+                datosUsuarios[i].saldo,
+                datosUsuarios[i].estado,
+                datosUsuarios[i].actividad);
+    }
+
+    fclose(pF);
+}
+
+bool cargarDatos(struct datos arrayDatos[]) {
+    FILE *pF = fopen(FILE_NAME, "r");
+
+    for (int i = 0; i < USUARIOS_MAXIMOS; i++) {
+        fscanf(pF, "%d %d %s %lf %d %s",
+                   &arrayDatos[i].numCuenta,
+                   &arrayDatos[i].clave,
+                   arrayDatos[i].nombre,
+                   &arrayDatos[i].saldo,
+                   &arrayDatos[i].estado,
+                   arrayDatos[i].actividad);
+        }
+
+    fclose(pF);
+    return true;
+}
+
+void desbloquearUsuario(struct datos arrayDatos[]) {
+    printf("Seleccione un usuario para desbloquear:\n");
+    int cantidadUsuarios = 0;
+    for (int i = 0; i < USUARIOS_MAXIMOS; i++) {
+        if (arrayDatos[i].estado == 0) {
+            printf("%d. NUM CUENTA: %d NOMBRE: %s\n",i+1,arrayDatos[i].numCuenta,arrayDatos[i].nombre);
+            cantidadUsuarios ++;
+        }
+    }
+
+    int opcion = 1000;
+    while (opcion < cantidadUsuarios || opcion > cantidadUsuarios) {
+        scanf(" %d",&opcion);
+    }
+    
+    arrayDatos[opcion-1].estado = 1;
+    printf("Usuario desbloqueado con exito");
+}
+
+int main(int argc, char const *argv[])
+{
+    struct datos datosUsuarios[USUARIOS_MAXIMOS];
+    cargarDatos(datosUsuarios);
+
+    bool running = true;
+    do {
+        char ejecutando;
+        char operacion = '\0';
+        int indiceUsuario = iniciarSesion(datosUsuarios);
+        
+        if (indiceUsuario != -1 && indiceUsuario != 999) {
+                do {    
+                    limpiar();
+                    operacion = '\0';
+                    imprimirMenu();
+                    while (operacion != DEPOSITO && operacion != EXTRACCION && operacion != CONSULTAR_SALDO && operacion != TRANSFERENCIA && operacion != VER_ACTIVIDAD && operacion != CERRAR_SESION) {
+                        operacion = getch();
+                    }
+                    switch (operacion)
+                    {
+                    case DEPOSITO:
+                        limpiar();
+                        realizarDeposito(datosUsuarios, indiceUsuario);
+                        break;
+                    case EXTRACCION:
+                        limpiar();
+                        realizarExtraccion(datosUsuarios, indiceUsuario);
+                        break;
+                    case CONSULTAR_SALDO:
+                        limpiar();
+                        consultarSaldo(datosUsuarios, indiceUsuario);
+                        break;
+                    case TRANSFERENCIA:
+                        limpiar();
+                        realizarTransferencia(datosUsuarios, indiceUsuario);
+                        break;
+                    case VER_ACTIVIDAD:
+                        limpiar();
+                        verActividad(datosUsuarios, indiceUsuario);
+                        break;
+                    case CERRAR_SESION:
+                        limpiar();
+                        printf("Gracias por utilizar Banco Formosa\n");
+                        break;
+                    }
+
+                    if (operacion != CERRAR_SESION) {
+                        ejecutando = realizarOtraOperacion();
+                        limpiar();
+                    }else break;
+                }while (ejecutando == '1');
+                limpiar();
+                printf("Gracias por confiar en Banco Formosa\n");
+
+        }else if (indiceUsuario == 912) {
+            imprimirMenuAdmin();
+            while (operacion != '1' && operacion != '2') {
+                operacion = getch();
+            }
+
+            if (operacion == '1') {
+                desbloquearUsuario(datosUsuarios);
+            }else{
+                printf("EJECUCI%dN FINALIZADA",162);
+                running = false;
+            }
+        }
+    }while (running);
+
+    guardarDatos(datosUsuarios);
+
+    return 0;
+}
